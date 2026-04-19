@@ -3,109 +3,95 @@ import pandas as pd
 import itertools
 import re
 
-# Configuración de página
-st.set_page_config(page_title="LogicPro v2.0", layout="centered")
+# Configuración básica sin colores fijos para evitar errores visuales
+st.set_page_config(page_title="Ingeniería Lógica", layout="wide")
 
-# Estilos CSS para mejorar la apariencia de los botones
-st.markdown("""
-    <style>
-    div.stButton > button:first-child { background-color: #f0f2f6; border-radius: 10px; height: 3em; font-weight: bold; }
-    div.stButton > button:hover { border: 2px solid #1565c0; color: #1565c0; }
-    .status-box { padding: 15px; border-radius: 10px; margin-bottom: 15px; }
-    </style>
-    """, unsafe_allow_html=True)
+st.title("🖥️ Analizador Proposicional Profesional")
+st.write("Usa el teclado o escribe directamente. Resultados en binario (0/1).")
 
-st.title("🖥️ Analizador Lógico Proposicional")
-st.write("Construye tu fórmula. Si los botones tardan, puedes editar el texto directamente.")
-
-# --- GESTIÓN DE ESTADO ---
+# Estado de la expresión
 if 'expr' not in st.session_state:
     st.session_state.expr = ""
 
-def add_to_expr(val):
-    st.session_state.expr += val
+# Funciones de control
+def add(val): st.session_state.expr += val
+def clear(): st.session_state.expr = ""
+def undo(): st.session_state.expr = st.session_state.expr.strip()[:-1]
 
-def clear_expr():
-    st.session_state.expr = ""
+# --- INTERFAZ ---
+# Caja de texto principal (puedes borrar la 'Q' extra manualmente aquí si aparece)
+st.session_state.expr = st.text_input("Expresión actual:", value=st.session_state.expr)
 
-def delete_last():
-    st.session_state.expr = st.session_state.expr[:-2] if st.session_state.expr.endswith(" ") else st.session_state.expr[:-1]
-
-# --- INTERFAZ DE USUARIO ---
-# Input de texto sincronizado con los botones
-st.session_state.expr = st.text_input("Fórmula actual:", value=st.session_state.expr)
-
-# Teclado Lógico
+# Teclado dinámico (Sin CSS invasivo para que se vea bien en cualquier tema)
 c1, c2, c3, c4, c5, c6 = st.columns(6)
-if c1.button("P"): add_to_expr("P ")
-if c2.button("Q"): add_to_expr("Q ")
-if c3.button("R"): add_to_expr("R ")
-if c4.button("S"): add_to_expr("S ")
-if c5.button("("): add_to_expr("( ")
-if c6.button(")"): add_to_expr(" )")
+if c1.button("P"): add("P "); st.rerun()
+if c2.button("Q"): add("Q "); st.rerun()
+if c3.button("R"): add("R "); st.rerun()
+if c4.button("S"): add("S "); st.rerun()
+if c5.button("("): add("( "); st.rerun()
+if c6.button(")"): add(") "); st.rerun()
 
 o1, o2, o3, o4, o5, o6 = st.columns(6)
-if o1.button("¬ NOT"): add_to_expr("not ")
-if o2.button("∧ AND"): add_to_expr("and ")
-if o3.button("∨ OR"): add_to_expr("or ")
-if o4.button("→ IF"): add_to_expr("=> ")
-if o5.button("↔ IFF"): add_to_expr("== ")
-if o6.button("⊕ XOR"): add_to_expr("^ ")
+if o1.button("NOT"): add("not "); st.rerun()
+if o2.button("AND"): add("and "); st.rerun()
+if o3.button("OR"): add("or "); st.rerun()
+if o4.button("IF"): add("=> "); st.rerun()
+if o5.button("IFF"): add("== "); st.rerun()
+if o6.button("XOR"): add("^ "); st.rerun()
 
-bc1, bc2 = st.columns(2)
-if bc1.button("⬅️ Borrar último"): delete_last(); st.rerun()
-if bc2.button("🗑️ Limpiar todo"): clear_expr(); st.rerun()
+col_util1, col_util2 = st.columns(2)
+if col_util1.button("⬅️ Corregir", use_container_width=True): undo(); st.rerun()
+if col_util2.button("🗑️ Limpiar Todo", use_container_width=True): clear(); st.rerun()
 
-# --- PROCESAMIENTO ---
-def solve_logic(formula, values):
-    # Traducir implicación para Python: (A => B) -> (not A or B)
-    # Usamos una traducción segura para eval()
-    processed = formula.replace("=>", "<=") # En Python bool, A <= B es B or not A
+# --- LÓGICA DE CÁLCULO ---
+def evaluar_logica(formula, valores):
+    # En Python, el operador '<=' funciona como implicación lógica (A implica B)
+    f_procesada = formula.replace("=>", "<=")
     try:
-        return eval(processed, {"__builtins__": {}}, values)
+        return eval(f_procesada, {"__builtins__": {}}, valores)
     except:
         return None
 
-if st.button("🚀 GENERAR TABLA DE VERDAD", type="primary"):
-    if not st.session_state.expr.strip():
-        st.warning("Escribe una expresión primero.")
+if st.button("🚀 GENERAR ANÁLISIS", type="primary", use_container_width=True):
+    if not st.session_state.expr:
+        st.warning("La expresión está vacía.")
     else:
         try:
-            # Encontrar variables (P, Q, R, S)
-            vars_found = sorted(list(set(re.findall(r'\b[P-S]\b', st.session_state.expr))))
-            if not vars_found:
-                st.error("No se detectaron variables (P, Q, R o S).")
+            # Extraer variables P, Q, R, S
+            vars_encontradas = sorted(list(set(re.findall(r'\b[P-S]\b', st.session_state.expr))))
+            
+            if not vars_encontradas:
+                st.error("No se detectaron variables válidas (P, Q, R, S).")
             else:
-                # Generar combinaciones
-                combos = list(itertools.product([True, False], repeat=len(vars_found)))
-                rows = []
-                results = []
+                combinaciones = list(itertools.product([True, False], repeat=len(vars_encontradas)))
+                tabla = []
+                resultados_puros = []
 
-                for c in combos:
-                    context = dict(zip(vars_found, c))
-                    res = solve_logic(st.session_state.expr, context)
+                for combo in combinaciones:
+                    contexto = dict(zip(vars_encontradas, combo))
+                    res = evaluar_logica(st.session_state.expr, contexto)
                     
-                    if res is None:
-                        raise ValueError("Error de sintaxis")
+                    if res is None: raise Exception("Error de sintaxis")
                     
-                    row = {v: (1 if context[v] else 0) for v in vars_found}
-                    row["Resultado"] = 1 if res else 0
-                    rows.append(row)
-                    results.append(res)
+                    # Crear fila con 1s y 0s
+                    fila = {v: (1 if contexto[v] else 0) for v in vars_encontradas}
+                    fila["Resultado"] = 1 if res else 0
+                    tabla.append(fila)
+                    resultados_puros.append(res)
 
-                # Mostrar Resultados
-                df = pd.DataFrame(rows)
+                # Mostrar Tabla
+                df = pd.DataFrame(tabla)
                 st.divider()
                 
-                # Clasificación
-                if all(results):
-                    st.success("✨ Es una **Tautología** (Siempre 1)")
-                elif not any(results):
-                    st.error("💀 Es una **Contradicción** (Siempre 0)")
+                # Clasificación de ingeniería
+                if all(resultados_puros):
+                    st.success("✨ TAUTOLOGÍA")
+                elif not any(resultados_puros):
+                    st.error("❌ CONTRADICCIÓN")
                 else:
-                    st.warning("⚖️ Es una **Contingencia** (Mezcla de 0 y 1)")
-
-                st.table(df)
+                    st.warning("⚖️ CONTINGENCIA")
                 
-        except Exception:
-            st.error("❌ Error de Sintaxis: Revisa que los conectores y paréntesis estén bien puestos (ej. `P and Q`).")
+                st.table(df) # st.table es más estable que st.dataframe para entregas académicas
+                
+        except:
+            st.error("Sintaxis incorrecta. Revisa que los operadores y paréntesis estén balanceados.")
